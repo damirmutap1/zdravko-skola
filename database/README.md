@@ -1,5 +1,7 @@
 # CMS installation
 
+The CMS is verified on PHP 8.5. Ensure that `pdo_mysql`, `mbstring`, `fileinfo`, `gd`, `zip`, and `curl` are enabled for the selected PHP version.
+
 1. Upload the project files, including `.htaccess`, `skola-admin/`, `includes/`, `stylesheets/cms.css`, and the writable `uploads/cms/` directory.
 2. Create `config/database.php` from `config/database.example.php` and add the production database connection.
 3. Create `config/contact.php` from `config/contact.example.php` and add the contact recipient and reCAPTCHA secret.

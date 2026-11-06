@@ -2,6 +2,14 @@
 
 PHP website with a database-backed CMS and administration panel.
 
+## Runtime requirements
+
+- PHP 8.1 or newer; production is verified on PHP 8.5
+- MySQL or MariaDB with `utf8mb4` support
+- PHP extensions: `pdo_mysql`, `mbstring`, `fileinfo`, `gd`, `zip`, and `curl`
+- Apache `mod_rewrite` for extensionless database-managed routes
+- Write access for `uploads/cms/`
+
 ## Installation
 
 See [`database/README.md`](database/README.md) for the database import and first-login instructions.
