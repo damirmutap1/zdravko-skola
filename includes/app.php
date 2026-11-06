@@ -2386,4 +2386,19 @@ function cms_navigation_blueprint_tree(PDO $pdo = null, array $blueprint = null)
     return $tree;
 }
 
-require_once __DIR__ . '/page-cms.php';
+$pageCmsBootstrapFile = __DIR__ . '/page-cms.php';
+
+if (is_file($pageCmsBootstrapFile)) {
+    require_once $pageCmsBootstrapFile;
+} else {
+    // Preserve the original website during an incomplete file deployment.
+    function cms_maybe_render_managed_page($pageKey, array $options = [])
+    {
+        return false;
+    }
+
+    function cms_render_managed_page_by_route($routePath)
+    {
+        return false;
+    }
+}

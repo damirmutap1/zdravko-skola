@@ -12,5 +12,7 @@ AddDefaultCharset UTF-8
     RewriteCond %{REQUEST_FILENAME}.php -f
     RewriteRule ^(.+?)/?$ $1.php [L,QSA]
 
-    RewriteRule ^(.+?)/?$ page.php?slug=$1 [L,QSA]
+    # Only extensionless routes can be database-managed pages. Missing assets
+    # such as CSS, JavaScript and images remain normal 404 responses.
+    RewriteRule ^([A-Za-z0-9_/-]+)/?$ page.php?slug=$1 [L,QSA]
 </IfModule>
