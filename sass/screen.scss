@@ -567,5 +567,11 @@ section.single-page{
         width: 90%
     }
 }
+
+// Owl Carousel 2 can leave its clipping container at an intrinsic width in
+// newer browsers. Keep it aligned with the full-width carousel viewport.
+.owl-carousel .owl-stage-outer{
+    width: 100%;
+}
     
     

@@ -6,3 +6,5 @@
 !/uploads/cms/images/.gitkeep
 error_log
 /test/
+/.sass-cache/
+/test-results/
