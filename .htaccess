@@ -1,9 +1,9 @@
-Options -MultiViews
 DirectoryIndex index.php
 AddDefaultCharset UTF-8
 
 <IfModule mod_rewrite.c>
     RewriteEngine On
+    RewriteBase /
 
     RewriteCond %{REQUEST_FILENAME} -f [OR]
     RewriteCond %{REQUEST_FILENAME} -d
@@ -14,11 +14,3 @@ AddDefaultCharset UTF-8
 
     RewriteRule ^(.+?)/?$ page.php?slug=$1 [L,QSA]
 </IfModule>
-
-<FilesMatch "^(database\.php|.*\.sql)$">
-    Require all denied
-</FilesMatch>
-
-<Files "phpinfo.php">
-    Require all denied
-</Files>
