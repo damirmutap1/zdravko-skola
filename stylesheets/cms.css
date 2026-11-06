@@ -1,0 +1,54 @@
+.cms-managed-area {
+    clear: both;
+    padding: 45px 0;
+}
+
+.cms-managed-area .container {
+    box-sizing: border-box;
+    width: 1170px;
+    max-width: calc(100% - 30px);
+    margin: 0 auto;
+}
+
+.cms-managed-area .row::after {
+    content: "";
+    display: table;
+    clear: both;
+}
+
+.cms-managed-area h3 {
+    margin: 0 0 20px;
+    font: 36px/1.2 "Alice", serif;
+    color: #373737;
+}
+
+.cms-managed-area .extra-wrap,
+.cms-download-shell {
+    box-sizing: border-box;
+    background: #fff;
+    border: 1px solid #e4e4e4;
+}
+
+.cms-managed-area img {
+    max-width: 100%;
+}
+
+.cms-gallery-card-wrap {
+    box-sizing: border-box;
+    float: left;
+    width: 25%;
+    padding: 0 10px;
+}
+
+@media (max-width: 800px) {
+    .cms-gallery-card-wrap {
+        width: 50%;
+    }
+}
+
+@media (max-width: 480px) {
+    .cms-gallery-card-wrap {
+        float: none;
+        width: 100%;
+    }
+}

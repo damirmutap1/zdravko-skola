@@ -1,0 +1,21 @@
+* text=auto
+
+*.php text eol=lf
+*.js text eol=lf
+*.css text eol=lf
+*.md text eol=lf
+*.sql text eol=lf
+*.html text eol=lf
+
+*.jpg binary
+*.jpeg binary
+*.png binary
+*.gif binary
+*.pdf binary
+*.doc binary
+*.docx binary
+*.xls binary
+*.xlsx binary
+*.mp4 binary
+*.woff binary
+*.ttf binary

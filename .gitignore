@@ -1,0 +1,8 @@
+/config/database.php
+/config/contact.php
+/uploads/cms/files/*
+/uploads/cms/images/*
+!/uploads/cms/files/.gitkeep
+!/uploads/cms/images/.gitkeep
+error_log
+/test/

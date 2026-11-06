@@ -1,0 +1,85 @@
+/*! http://responsiveslides.com v1.54 by @viljamis */
+
+.rslides {
+  position: relative;
+  list-style: none;
+  overflow: hidden;
+  width: 100%;
+  padding: 0;
+  margin: 0;
+  border-bottom: solid 2px #000;
+  border-top: solid 2px #000;
+  }
+
+.rslides li {
+  -webkit-backface-visibility: hidden;
+  position: absolute;
+  display: none;
+  width: 100%;
+  left: 0;
+  top: 0;
+  }
+
+.rslides li:first-child {
+  position: relative;
+  display: block;
+  float: left;
+  }
+
+.rslides img {
+  display: block;
+  height: auto;
+  width: 100%;
+  border: 0;
+  }
+.callbacks_nav {
+  background: transparent url("../images/nav.gif") no-repeat scroll left top;
+  height: 61px;
+  left: 0;
+  margin-top: -45px;
+  opacity: 0.7;
+  overflow: hidden;
+  position: absolute;
+  text-decoration: none;
+  text-indent: -9999px;
+  top: 52%;
+  width: 38px;
+  z-index: 3;
+}
+.callbacks_nav.next {
+  background-position: right top;
+  left: auto;
+  right: 0;
+}
+.callbacks_container {
+  margin-bottom: 50px;
+  position: relative;
+  width: 100%;
+}
+p.slider-centar {
+  color: #fff;
+  font-size: 3em;
+  font-weight: 600;
+  position: absolute;
+  text-align: center;
+  top: 31px;
+  width: 100%;
+}
+@media (max-width: 1300px){
+    .rsp-slide{ margin-top: -100px;}
+}
+@media (max-width: 1024px){
+    .rsp-slide{ 
+        margin-top: -130px;
+        p.p1{font-size: 5.0em}
+        p.p2{font-size: 1.6em}    
+    }
+}
+@media (max-width: 768px){
+    .rsp-slide{ 
+        margin-top: -130px;
+        p.p1{font-size: 2.0em}
+        p.p2{font-size: 1.2em}   
+        a.btn-default{font-size: 1.2em; padding: 8px}
+    }
+}

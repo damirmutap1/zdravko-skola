@@ -1,0 +1,233 @@
+<?php require_once __DIR__ . '/includes/app.php'; cms_maybe_render_managed_page(pathinfo(__FILE__, PATHINFO_FILENAME), ['source_file' => __FILE__]); ?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+
+
+    <title>Основна школа Здравко Јовановић </title>
+
+
+    <link href="https://fonts.googleapis.com/css?family=Open+Sans:300,400,600,700&amp;subset=cyrillic" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css?family=PT+Sans:400,700&amp;subset=cyrillic-ext" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css?family=Alice&amp;subset=cyrillic,cyrillic-ext" rel="stylesheet">
+
+
+
+     <link href="stylesheets/screen.css" rel="stylesheet">
+    <link href="css/tables.css" rel="stylesheet">
+
+        <!-- OWL SLIDER PLUGIN -->
+    <link rel="stylesheet" href="css/owl.carousel.css">
+    <link rel="stylesheet" href="css/owl.theme.default.css">
+
+</head>
+
+<body>
+
+     <?php include('includes/header.php')?>
+
+   <div class="clearfix"></div>
+
+
+    <section class="cover-istorijat">
+       <div class="wrap">
+           <img src="images/istorijat.jpg">
+       </div>
+    </section>
+
+
+    <section class="single-page">
+        <div class="wrap">
+            <h1><span>Ученици</span></h1>
+
+            <div class="single-box">
+                <?php
+                ini_set('display_errors', 1);
+                ini_set('display_startup_errors', 1);
+                  require_once('exsel/spreadsheet-reader-master/php-excel-reader/excel_reader2.php');
+                  require_once('exsel/spreadsheet-reader-master/SpreadsheetReader.php');
+                  require_once('exsel/function.php');
+                ?>
+
+                <h2 id="strucni">Распоред писмених провера 1. и 4 разред Матична школа</h2>
+                <?php
+                  call_excel ('raspored-pismenih/2022-2023/1-i-4-razred-maticna.xlsx');
+                ?>
+
+                <h2 id="strucni">Распоред писмених провера 2. и 3 разред Матична школа</h2>
+                <?php
+                  call_excel ('raspored-pismenih/2022-2023/2-i-3-razred-maticna.xlsx');
+                ?>
+
+
+                <h2 id="strucni">Распоред писмених провера 5 разред Матична школа</h2>
+                <?php
+                  call_excel ('raspored-pismenih/2022-2023/5-razred-maticna.xlsx');
+                ?>
+                <h2 id="strucni">Распоред писмених провера 6 разред Матична школа</h2>
+                <?php
+                  call_excel ('raspored-pismenih/2022-2023/6-razred-maticna.xls');
+                ?>
+
+                <h2 id="strucni">Распоред писмених провера 7 разред Матична школа</h2>
+                <?php
+                  call_excel ('raspored-pismenih/2022-2023/7-razred-maticna.xls');
+                ?>
+
+                 <h2 id="strucni">Распоред писмених провера 8 разред Матична школа</h2>
+                 <?php
+                   call_excel ('raspored-pismenih/2022-2023/8-razred-maticna.xls');
+                 ?>
+
+
+
+                <h2 id="strucni">Распоред писмених провера - ИО Брезовице, 1, 2, 3 РАЗРЕД </h2>
+                <?php
+                  call_excel ('raspored-pismenih/2022-2023/1-3-4-brezovice.xls');
+                ?>
+
+                <h2 id="strucni">Распоред писмених провера - ИО Стубо, 3 i 4 РАЗРЕД </h2>
+                <?php
+                  call_excel ('raspored-pismenih/2022-2023/3-4-stubo.xls');
+                ?>
+
+
+
+
+            </div>
+
+
+             <div class="clearfix"></div>
+
+        </div>
+    </section>
+
+
+
+    <div class="clearfix"></div>
+
+   <?php include('includes/footer.php')?>
+
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.3/jquery.min.js"></script>
+    <script src="js/owl-slider/owl.carousel.min.js"></script>
+    <script>
+        var w, pos;
+
+
+        /*Inicializuj poziciju okvira aktivnog meni bara*/
+        $( document ).ready(function() {
+                pos = $(".main_nav.activ").position().left;
+                w = $(".main_nav.activ").width();
+
+                $("a span.activ:nth-child(1)").css("left",pos+5);
+                $("a span.activ:nth-child(2)").css("left",pos+w+50);
+                $("a span.activ:nth-child(3)").css("left",pos+w+50);
+                $("a span.activ:nth-child(4)").css("left",pos+5);
+
+        });
+        /*Na resize prati poziciju aktivnog dugmeta*/
+        $( window ).resize(function() {
+                pos = $(".main_nav.activ").position().left;
+                w = $(".main_nav.activ").width();
+
+                $("a span.activ:nth-child(1)").css("left",pos+5);
+                $("a span.activ:nth-child(2)").css("left",pos+w+50);
+                $("a span.activ:nth-child(3)").css("left",pos+w+50);
+                $("a span.activ:nth-child(4)").css("left",pos+5);
+        });
+
+        /*hover menu efekat*/
+        $(".main_nav").hover(function(){
+            pos = $(this).position().left;
+            w = $(this).width();
+
+            $("a span.in-active:nth-child(1)").css("left",pos+5);
+            $("a span.in-active:nth-child(2)").css("left",pos+w+50);
+            $("a span.in-active:nth-child(3)").css("left",pos+w+50);
+            $("a span.in-active:nth-child(4)").css("left",pos+5);
+
+        });
+
+        $(".button a").hover(function(){
+            pos = $(this).position().left;
+            w = $(this).width();
+
+            $("a span.buton:nth-child(1)").css("left",pos);
+            $("a span.buton:nth-child(2)").css("left",pos+w+16);
+            $("a span.buton:nth-child(3)").css("left",pos+w+16);
+            $("a span.buton:nth-child(4)").css("left",pos);
+
+        });
+
+
+
+
+      $('.main-slider').owlCarousel({
+            nav:false,
+            responsiveClass:true,
+            dots:false,
+            responsive:{
+                0:{
+                    items:1
+                },
+                600:{
+                    items:1
+                },
+                1000:{
+                    items:1
+                }
+            }
+        });
+
+        $('.galerija').owlCarousel({
+            nav:false,
+            responsiveClass:true,
+            dots:false,
+            responsive:{
+                0:{
+                    items:2
+                },
+                600:{
+                    items:4
+                },
+                1000:{
+                    items:4
+                }
+            }
+        });
+</script>
+
+<script>
+$(document).ready(function(){
+  // Add smooth scrolling to all links
+  $("a").on('click', function(event) {
+
+    // Make sure this.hash has a value before overriding default behavior
+    if (this.hash !== "") {
+      // Prevent default anchor click behavior
+      event.preventDefault();
+
+      // Store hash
+      var hash = this.hash;
+
+      // Using jQuery's animate() method to add smooth page scroll
+      // The optional number (800) specifies the number of milliseconds it takes to scroll to the specified area
+      $('html, body').animate({
+        scrollTop: $(hash).offset().top
+      }, 800, function(){
+
+        // Add hash (#) to URL when done scrolling (default click behavior)
+        window.location.hash = hash;
+      });
+    } // End if
+  });
+});
+</script>
+
+
+
+</body>
+</html>
