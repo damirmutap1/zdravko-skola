@@ -89,19 +89,11 @@ try {
 
                 $newPage = cms_get_page_by_id($pdo, $newPageId);
                 $newPageRoute = (string) ($newPage['route_path'] ?? $newPageSlug);
-                $safePageTitle = site_escape($newPageTitle);
-                $initialContent = '<section class="pad_t_65 page4" id="content">'
-                    . '<div class="container"><div class="row"><div class="grid_12 mar_t_3">'
-                    . '<h3 class="s4 no-pad">' . $safePageTitle . '</h3>'
-                    . '</div></div><div class="row"><div class="grid_12">'
-                    . '<p>Unesite sadržaj ove stranice.</p>'
-                    . '</div></div></div></section>';
-
                 cms_save_page_content($pdo, [
                     'page_id' => $newPageId,
                     'browser_title' => $newPageTitle,
                     'meta_description' => '',
-                    'content_html' => $initialContent,
+                    'content_html' => '',
                     'extra_head_html' => '',
                     'extra_footer_html' => '',
                     'is_published' => 1,

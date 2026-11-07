@@ -10,3 +10,7 @@ The CMS is verified on PHP 8.5. Ensure that `pdo_mysql`, `mbstring`, `fileinfo`,
 6. Change the initial password from **Admin korisnici** after the first login.
 
 The public site keeps rendering the original PHP files when the database is unavailable. Once a page has been imported, its published database version is used at the same URL.
+
+For an existing CMS installation created before homepage display limits were added, import `database/migrations/20261107_homepage_display_settings.sql`. Opening **Prikaz početne** in the admin panel also creates the settings table when the database user has schema permissions.
+
+The same admin screen detects legacy hardcoded homepage and archive entries. Use **Prenesi postojeće stavke u bazu** once to import them as editable CMS items and replace the old HTML lists with database-backed views. The import is transactional and skips duplicates.

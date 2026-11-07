@@ -52,6 +52,12 @@ require __DIR__ . '/layout-start.php';
                 <p>Unesite novost, datum i kratak opis.</p>
                 <span class="action-card-arrow">Započni →</span>
             </a>
+            <a class="action-card" href="homepage-settings.php">
+                <span class="badge">Početna strana</span>
+                <h2>Podesi broj objava</h2>
+                <p>Odredite koliko poslednjih obaveštenja i aktuelnosti se prikazuje.</p>
+                <span class="action-card-arrow">Otvori podešavanja →</span>
+            </a>
         <?php endif; ?>
         <a class="action-card" href="content-edit.php?area_key=page-downloads&content_type=file">
             <span class="badge">Dokumenti</span>
@@ -70,6 +76,12 @@ require __DIR__ . '/layout-start.php';
             <h2>Izmeni tekst stranice</h2>
             <p>Pronađite stranicu i uredite njen glavni sadržaj.</p>
             <span class="action-card-arrow">Otvori stranice →</span>
+        </a>
+        <a class="action-card" href="pages.php?status=legacy">
+            <span class="badge">Postojeći sajt</span>
+            <h2>Uredi staru PHP stranicu</h2>
+            <p>Menjajte tekst starih stranica kroz CMS, bez ručnog uređivanja fajlova.</p>
+            <span class="action-card-arrow">Prikaži stare stranice →</span>
         </a>
     </div>
 </section>

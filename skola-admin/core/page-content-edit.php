@@ -23,6 +23,7 @@ if (!$page) {
 
 $record = cms_get_page_content_by_page_id($pdo, $pageId);
 $canImportSource = !empty($page['is_system']) && !empty($page['file_path']) && $page['file_path'] !== '[db-page]';
+$sourceLoadError = '';
 
 if ($canImportSource && $_SERVER['REQUEST_METHOD'] === 'POST' && (string) ($_POST['action'] ?? '') === 'import_source') {
     try {
@@ -35,9 +36,28 @@ if ($canImportSource && $_SERVER['REQUEST_METHOD'] === 'POST' && (string) ($_POS
     }
 }
 
-if (!$record && $canImportSource) {
-    cms_seed_page_content_from_source($pdo, $page['page_key'], null, false);
-    $record = cms_get_page_content_by_page_id($pdo, $pageId);
+if (
+    $canImportSource
+    && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET'
+    && (!$record || cms_page_content_is_effectively_empty($record['content_html'] ?? '', $page['title'] ?? ''))
+) {
+    try {
+        $result = cms_seed_page_content_from_source($pdo, $page['page_key'], null, (bool) $record);
+        $record = cms_get_page_content_by_page_id($pdo, $pageId);
+
+        if (!$record || cms_page_content_is_effectively_empty($record['content_html'] ?? '', $page['title'] ?? '')) {
+            $sourceLoadError = $result['message'] ?? 'Tekst izvornog PHP fajla nije mogao da se učita.';
+        }
+    } catch (Throwable $exception) {
+        $sourceLoadError = $exception->getMessage();
+    }
+}
+
+if ($record && ($page['file_path'] ?? '') === '[db-page]') {
+    $record['content_html'] = cms_strip_generated_db_page_placeholder(
+        $record['content_html'] ?? '',
+        $page['title'] ?? ''
+    );
 }
 
 if ($record && $_SERVER['REQUEST_METHOD'] === 'POST' && (string) ($_POST['action'] ?? '') === 'import_downloads') {
@@ -85,9 +105,9 @@ require __DIR__ . '/layout-start.php';
 <section class="form-card page-editor-card">
     <div class="page-editor-header">
         <div>
-            <span class="badge">Uređujete stranicu</span>
+            <span class="badge"><?php echo $canImportSource ? 'Stara PHP stranica · uređivanje kroz CMS' : 'Uređujete stranicu'; ?></span>
             <h2><?php echo site_escape($page['title']); ?></h2>
-            <p class="muted">Promene se prikazuju posetiocima tek nakon čuvanja.</p>
+            <p class="muted"><?php echo $canImportSource ? 'Promene se čuvaju u bazi i prikazuju na postojećoj URL adresi; originalni PHP fajl ostaje rezervna kopija.' : 'Promene se prikazuju posetiocima tek nakon čuvanja.'; ?></p>
         </div>
         <div class="page-editor-header-actions">
             <a class="button button-secondary" href="content.php?page_id=<?php echo (int) $pageId; ?>">Slike i fajlovi</a>
@@ -102,6 +122,11 @@ require __DIR__ . '/layout-start.php';
         <input type="hidden" name="source_hash" value="<?php echo site_escape((string) ($form['source_hash'] ?? '')); ?>">
 
         <section class="form-section page-editor-section" aria-labelledby="page-text-heading">
+            <?php if ($sourceLoadError !== ''): ?>
+                <div class="flash flash-error" role="alert">
+                    Tekst stare PHP stranice nije učitan: <?php echo site_escape($sourceLoadError); ?>
+                </div>
+            <?php endif; ?>
             <div class="form-section-heading">
                 <span class="step-number">1</span>
                 <div>
@@ -112,13 +137,13 @@ require __DIR__ . '/layout-start.php';
             <label>
                 Naslov stranice
                 <input type="text" name="browser_title" value="<?php echo site_escape((string) ($form['browser_title'] ?? '')); ?>" required>
-                <span class="field-help">Koristi se kao naziv stranice u tabu pregledača.</span>
+                <span class="field-help"><?php echo ($page['file_path'] ?? '') === '[db-page]' ? 'Prikazuje se kao glavni naslov stranice i kao naziv u tabu pregledača.' : 'Koristi se kao naziv stranice u tabu pregledača.'; ?></span>
             </label>
             <label class="page-editor-content-field">
                 Glavni tekst stranice
                 <textarea id="page-content-html" name="content_html" data-editor="rich"><?php echo site_escape((string) ($form['content_html'] ?? '')); ?></textarea>
             </label>
-            <p class="field-help">Za sliku unutar teksta koristite dugme fotografije u editoru. Za galeriju ili dokument koristite dugmad ispod.</p>
+            <p class="field-help">Široki baner škole dodaje se automatski iznad ovog teksta. Za druge slike unutar teksta koristite dugme fotografije u editoru.</p>
             <div class="actions page-editor-additions">
                 <a class="button button-secondary" href="content-edit.php?page_id=<?php echo (int) $pageId; ?>&area_key=page-gallery&content_type=image">Dodaj fotografiju</a>
                 <a class="button button-secondary" href="content-edit.php?page_id=<?php echo (int) $pageId; ?>&area_key=page-downloads&content_type=file">Dodaj fajl</a>
@@ -174,7 +199,7 @@ require __DIR__ . '/layout-start.php';
             <summary>Alati za uvoz postojećeg sadržaja</summary>
             <div class="advanced-panel-content actions">
                 <?php if ($canImportSource): ?>
-                    <form method="post">
+                    <form method="post" onsubmit="return confirm('Ponovni uvoz iz PHP fajla zameniće izmene koje ste napravili kroz CMS. Nastaviti?');">
                         <input type="hidden" name="csrf_token" value="<?php echo site_escape(admin_csrf_token()); ?>">
                         <input type="hidden" name="action" value="import_source">
                         <button type="submit" class="button button-secondary">Ponovo uvezi iz PHP fajla</button>

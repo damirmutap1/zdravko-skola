@@ -502,7 +502,7 @@ section.korona {
 
 section.cover-istorijat{
     .wrap{max-width: 100%;}
-    img{width:100%}
+    img{width:100%; height:auto; display:block;}
     
     h1{
         font-size: 5em;

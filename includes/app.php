@@ -508,6 +508,646 @@ function cms_area_options()
     ];
 }
 
+function cms_homepage_display_setting_definitions()
+{
+    return [
+        'homepage_important_limit' => [
+            'area_key' => 'homepage-important',
+            'label' => 'Važna obaveštenja',
+            'default' => 6,
+            'min' => 1,
+            'max' => 20,
+        ],
+        'homepage_events_limit' => [
+            'area_key' => 'homepage-events',
+            'label' => 'Aktuelno',
+            'default' => 6,
+            'min' => 1,
+            'max' => 20,
+        ],
+    ];
+}
+
+function cms_ensure_settings_table(PDO $pdo)
+{
+    $pdo->exec('
+        CREATE TABLE IF NOT EXISTS cms_settings (
+            setting_key VARCHAR(120) NOT NULL PRIMARY KEY,
+            setting_value TEXT NOT NULL,
+            updated_by INT UNSIGNED NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            KEY idx_cms_settings_updated_by (updated_by),
+            CONSTRAINT fk_cms_settings_admin FOREIGN KEY (updated_by) REFERENCES admins (id) ON DELETE SET NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    ');
+}
+
+function cms_get_homepage_display_limits(PDO $pdo)
+{
+    $definitions = cms_homepage_display_setting_definitions();
+    $limits = [];
+
+    foreach ($definitions as $definition) {
+        $limits[$definition['area_key']] = (int) $definition['default'];
+    }
+
+    if (!site_table_exists($pdo, 'cms_settings')) {
+        return $limits;
+    }
+
+    $keys = array_keys($definitions);
+    $placeholders = implode(', ', array_fill(0, count($keys), '?'));
+    $statement = $pdo->prepare('SELECT setting_key, setting_value FROM cms_settings WHERE setting_key IN (' . $placeholders . ')');
+    $statement->execute($keys);
+
+    foreach ($statement->fetchAll() as $setting) {
+        $key = (string) ($setting['setting_key'] ?? '');
+        if (!isset($definitions[$key])) {
+            continue;
+        }
+
+        $definition = $definitions[$key];
+        $value = filter_var($setting['setting_value'] ?? null, FILTER_VALIDATE_INT);
+        if ($value === false) {
+            continue;
+        }
+
+        $limits[$definition['area_key']] = max(
+            (int) $definition['min'],
+            min((int) $definition['max'], (int) $value)
+        );
+    }
+
+    return $limits;
+}
+
+function cms_save_homepage_display_limits(PDO $pdo, array $data, $adminId)
+{
+    cms_ensure_settings_table($pdo);
+    $definitions = cms_homepage_display_setting_definitions();
+    $values = [];
+
+    foreach ($definitions as $key => $definition) {
+        $value = filter_var(
+            $data[$key] ?? null,
+            FILTER_VALIDATE_INT,
+            ['options' => ['min_range' => (int) $definition['min'], 'max_range' => (int) $definition['max']]]
+        );
+
+        if ($value === false) {
+            throw new InvalidArgumentException(
+                $definition['label'] . ': unesite broj od ' . $definition['min'] . ' do ' . $definition['max'] . '.'
+            );
+        }
+
+        $values[$key] = (int) $value;
+    }
+
+    $statement = $pdo->prepare('
+        INSERT INTO cms_settings (setting_key, setting_value, updated_by)
+        VALUES (:setting_key, :setting_value, :updated_by)
+        ON DUPLICATE KEY UPDATE
+            setting_value = VALUES(setting_value),
+            updated_by = VALUES(updated_by),
+            updated_at = NOW()
+    ');
+
+    $pdo->beginTransaction();
+    try {
+        foreach ($values as $key => $value) {
+            $statement->execute([
+                'setting_key' => $key,
+                'setting_value' => (string) $value,
+                'updated_by' => (int) $adminId,
+            ]);
+        }
+        $pdo->commit();
+    } catch (Throwable $exception) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $exception;
+    }
+
+    return $values;
+}
+
+function cms_legacy_html_attribute($attributes, $name)
+{
+    $attributes = (string) $attributes;
+    $name = preg_quote((string) $name, '~');
+
+    if (preg_match('~\b' . $name . '\s*=\s*(["\'])(.*?)\1~is', $attributes, $match)) {
+        return html_entity_decode(trim((string) $match[2]), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    }
+
+    return '';
+}
+
+function cms_legacy_homepage_section_pattern()
+{
+    return '~<section\b[^>]*class=["\'][^"\']*\bobavestenja\b[^"\']*["\'][^>]*>.*?</section>~is';
+}
+
+function cms_legacy_homepage_title($html)
+{
+    $title = html_entity_decode(strip_tags((string) $html), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    $title = preg_replace('/\s+/u', ' ', $title);
+
+    return trim((string) $title);
+}
+
+function cms_legacy_homepage_link_items($html, $areaKey)
+{
+    $items = [];
+
+    if (!preg_match_all('~<a\b([^>]*)>(.*?)</a>~is', (string) $html, $links, PREG_SET_ORDER)) {
+        return $items;
+    }
+
+    foreach ($links as $link) {
+        $attributes = (string) ($link[1] ?? '');
+        $classes = preg_split('/\s+/', cms_legacy_html_attribute($attributes, 'class'), -1, PREG_SPLIT_NO_EMPTY);
+        if (!in_array('button', $classes ?: [], true)) {
+            continue;
+        }
+
+        $href = cms_legacy_html_attribute($attributes, 'href');
+        $title = cms_legacy_homepage_title($link[2] ?? '');
+        if ($href === '' || $title === '') {
+            continue;
+        }
+
+        $path = (string) parse_url($href, PHP_URL_PATH);
+        $extension = strtolower((string) pathinfo($path, PATHINFO_EXTENSION));
+        $isFile = in_array($extension, ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'csv', 'txt', 'zip', 'rtf', 'odt', 'ods', 'odp'], true);
+        $target = cms_legacy_html_attribute($attributes, 'target');
+
+        $items[] = [
+            'area_key' => $areaKey,
+            'content_type' => $isFile ? 'file' : 'link',
+            'title' => $title,
+            'summary' => null,
+            'body_html' => null,
+            'link_url' => $href,
+            'link_target' => $target === '_blank' ? '_blank' : '_self',
+            'source_html' => (string) $link[0],
+        ];
+    }
+
+    return $items;
+}
+
+function cms_legacy_homepage_published_at($title, $sourceHtml, $previousTimestamp = null)
+{
+    $title = (string) $title;
+    $sourceHtml = (string) $sourceHtml;
+    $year = null;
+    $month = 12;
+    $day = 31;
+    $hasMonthAndDay = false;
+
+    if (preg_match_all('/\b(20\d{2})\b/', $title, $years)) {
+        $year = max(array_map('intval', $years[1]));
+    }
+
+    if (preg_match('/\b(\d{1,2})[.](\d{1,2})[.](20\d{2})\b/', $title, $dateParts)) {
+        $first = (int) $dateParts[1];
+        $second = (int) $dateParts[2];
+        $year = (int) $dateParts[3];
+
+        if ($second > 12) {
+            $month = $first;
+            $day = $second;
+        } else {
+            $day = $first;
+            $month = $second;
+        }
+        $hasMonthAndDay = true;
+    } elseif (preg_match('~<time\b[^>]*>\s*<span\b[^>]*>(.*?)</span>\s*<em\b[^>]*>\s*(\d{1,2})~is', $sourceHtml, $timeParts)) {
+        $monthName = strtolower(cms_legacy_homepage_title($timeParts[1]));
+        $monthMap = [
+            'januar' => 1, 'јануар' => 1,
+            'februar' => 2, 'фебруар' => 2,
+            'mart' => 3, 'март' => 3,
+            'april' => 4, 'април' => 4,
+            'maj' => 5, 'мај' => 5,
+            'jun' => 6, 'јун' => 6,
+            'jul' => 7, 'јул' => 7,
+            'avgust' => 8, 'август' => 8,
+            'septembar' => 9, 'септембар' => 9,
+            'oktobar' => 10, 'октобар' => 10,
+            'novembar' => 11, 'новембар' => 11,
+            'decembar' => 12, 'децембар' => 12,
+        ];
+
+        if (isset($monthMap[$monthName])) {
+            $month = $monthMap[$monthName];
+            $day = (int) $timeParts[2];
+            $hasMonthAndDay = true;
+        }
+    }
+
+    if ($year === null && $hasMonthAndDay && $previousTimestamp !== null) {
+        $year = (int) date('Y', (int) $previousTimestamp);
+    }
+
+    if ($year !== null) {
+        $candidate = mktime(12, 0, 0, $month, $day, $year);
+    } elseif ($previousTimestamp !== null) {
+        $candidate = (int) $previousTimestamp - 86400;
+    } else {
+        $candidate = time();
+    }
+
+    $candidate = min($candidate, time());
+
+    if ($previousTimestamp !== null && $candidate >= (int) $previousTimestamp) {
+        $candidate = (int) $previousTimestamp - 86400;
+    }
+
+    return date('Y-m-d H:i:s', $candidate);
+}
+
+function cms_extract_legacy_homepage_items($contentHtml)
+{
+    if (!preg_match(cms_legacy_homepage_section_pattern(), (string) $contentHtml, $sectionMatch)) {
+        return null;
+    }
+
+    $sectionHtml = (string) $sectionMatch[0];
+    if (!preg_match('~<div\b[^>]*class=["\'][^"\']*\bright\b[^"\']*["\'][^>]*>~i', $sectionHtml, $rightMatch, PREG_OFFSET_CAPTURE)) {
+        return null;
+    }
+
+    $rightOffset = (int) $rightMatch[0][1];
+    $importantHtml = substr($sectionHtml, 0, $rightOffset);
+    $eventsHtml = substr($sectionHtml, $rightOffset);
+    $importantItems = cms_legacy_homepage_link_items($importantHtml, 'homepage-important');
+    $eventItems = cms_legacy_homepage_link_items($eventsHtml, 'homepage-events');
+
+    if (preg_match_all('~<time\b[^>]*>.*?</time>~is', $eventsHtml, $eventTimes)) {
+        foreach ($eventItems as $index => &$eventItem) {
+            if (isset($eventTimes[0][$index])) {
+                $eventItem['source_html'] .= (string) $eventTimes[0][$index];
+            }
+        }
+        unset($eventItem);
+    }
+
+    if (preg_match_all('~<video\b[^>]*>.*?</video>~is', $eventsHtml, $videos)) {
+        foreach ($videos[0] as $videoHtml) {
+            $eventItems[] = [
+                'area_key' => 'homepage-events',
+                'content_type' => 'html',
+                'title' => 'Школско видео обавештење',
+                'summary' => null,
+                'body_html' => trim((string) $videoHtml),
+                'link_url' => null,
+                'link_target' => '_self',
+                'source_html' => (string) $videoHtml,
+            ];
+        }
+    }
+
+    cms_assign_legacy_homepage_item_dates($importantItems);
+    cms_assign_legacy_homepage_item_dates($eventItems);
+
+    if (!$importantItems || !$eventItems) {
+        return null;
+    }
+
+    return [
+        'section_html' => $sectionHtml,
+        'items' => array_merge($importantItems, $eventItems),
+        'important_count' => count($importantItems),
+        'events_count' => count($eventItems),
+    ];
+}
+
+function cms_assign_legacy_homepage_item_dates(array &$items)
+{
+    $previousTimestamp = null;
+
+    foreach ($items as &$item) {
+        $item['published_at'] = cms_legacy_homepage_published_at(
+            $item['title'] . ' ' . cms_legacy_homepage_title($item['source_html'] ?? ''),
+            $item['source_html'] ?? '',
+            $previousTimestamp
+        );
+        $previousTimestamp = strtotime($item['published_at']);
+        unset($item['source_html']);
+    }
+    unset($item);
+}
+
+function cms_legacy_archive_section_pattern()
+{
+    return '~<section\b[^>]*class=["\'][^"\']*\bsingle-page\b[^"\']*["\'][^>]*>.*?</section>~is';
+}
+
+function cms_extract_legacy_notice_archive_items($contentHtml)
+{
+    if (!preg_match(cms_legacy_archive_section_pattern(), (string) $contentHtml, $sectionMatch)) {
+        return [];
+    }
+
+    $items = cms_legacy_homepage_link_items($sectionMatch[0], 'homepage-important');
+    cms_assign_legacy_homepage_item_dates($items);
+
+    return $items;
+}
+
+function cms_extract_legacy_event_archive_items($contentHtml)
+{
+    if (!preg_match(cms_legacy_archive_section_pattern(), (string) $contentHtml, $sectionMatch)) {
+        return [];
+    }
+
+    $items = [];
+    if (!preg_match_all('~<a\b([^>]*)>(.*?)</a>~is', $sectionMatch[0], $links, PREG_SET_ORDER)) {
+        return [];
+    }
+
+    foreach ($links as $link) {
+        $attributes = (string) ($link[1] ?? '');
+        $classes = preg_split('/\s+/', cms_legacy_html_attribute($attributes, 'class'), -1, PREG_SPLIT_NO_EMPTY);
+        if (!in_array('aktuelno', $classes ?: [], true)) {
+            continue;
+        }
+
+        $href = cms_legacy_html_attribute($attributes, 'href');
+        $innerHtml = (string) ($link[2] ?? '');
+        $title = '';
+        $summary = '';
+
+        if (preg_match('~<h[1-6]\b[^>]*>(.*?)</h[1-6]>~is', $innerHtml, $titleMatch)) {
+            $title = cms_legacy_homepage_title($titleMatch[1]);
+        }
+        if (preg_match('~<p\b[^>]*>(.*?)</p>~is', $innerHtml, $summaryMatch)) {
+            $summary = cms_legacy_homepage_title($summaryMatch[1]);
+        }
+
+        if ($href === '' || $title === '') {
+            continue;
+        }
+
+        $items[] = [
+            'area_key' => 'homepage-events',
+            'content_type' => 'link',
+            'title' => $title,
+            'summary' => $summary !== '' ? $summary : null,
+            'body_html' => null,
+            'link_url' => $href,
+            'link_target' => '_self',
+            'source_html' => (string) $link[0],
+        ];
+    }
+
+    cms_assign_legacy_homepage_item_dates($items);
+
+    return $items;
+}
+
+function cms_get_legacy_homepage_migration_status(PDO $pdo)
+{
+    $page = cms_get_page_by_key($pdo, 'index');
+    $record = $page ? cms_get_page_content_by_page_id($pdo, $page['id']) : null;
+    $contentHtml = (string) ($record['content_html'] ?? '');
+    $counts = ['homepage-important' => 0, 'homepage-events' => 0];
+    $archiveStatus = [];
+
+    foreach ([
+        'sva_obavestenja' => '{{homepage-important-archive}}',
+        'aktuelno' => '{{homepage-events-archive}}',
+    ] as $archivePageKey => $placeholder) {
+        $archivePage = cms_get_page_by_key($pdo, $archivePageKey);
+        $archiveRecord = $archivePage ? cms_get_page_content_by_page_id($pdo, $archivePage['id']) : null;
+        $archiveHtml = (string) ($archiveRecord['content_html'] ?? '');
+        $archiveStatus[$archivePageKey] = [
+            'available' => $archivePage && $archiveRecord,
+            'has_legacy_section' => preg_match(cms_legacy_archive_section_pattern(), $archiveHtml) === 1,
+            'uses_database_feed' => strpos($archiveHtml, $placeholder) !== false,
+        ];
+    }
+
+    if ($page && site_table_exists($pdo, 'cms_content_items')) {
+        $statement = $pdo->prepare('
+            SELECT area_key, COUNT(*) AS item_count
+            FROM cms_content_items
+            WHERE page_id = :page_id
+              AND area_key IN (\'homepage-important\', \'homepage-events\')
+            GROUP BY area_key
+        ');
+        $statement->execute(['page_id' => (int) $page['id']]);
+
+        foreach ($statement->fetchAll() as $row) {
+            $counts[(string) $row['area_key']] = (int) $row['item_count'];
+        }
+    }
+
+    $hasLegacySection = preg_match(cms_legacy_homepage_section_pattern(), $contentHtml) === 1;
+    $usesDatabaseFeed = strpos($contentHtml, '{{homepage-feed}}') !== false;
+
+    foreach ($archiveStatus as $status) {
+        $hasLegacySection = $hasLegacySection || $status['has_legacy_section'];
+        if ($status['available']) {
+            $usesDatabaseFeed = $usesDatabaseFeed && $status['uses_database_feed'];
+        }
+    }
+
+    return [
+        'available' => $page && $record,
+        'page_id' => $page ? (int) $page['id'] : 0,
+        'has_legacy_section' => $hasLegacySection,
+        'uses_database_feed' => $usesDatabaseFeed,
+        'archives' => $archiveStatus,
+        'important_count' => $counts['homepage-important'],
+        'events_count' => $counts['homepage-events'],
+    ];
+}
+
+function cms_migrate_legacy_homepage_content(PDO $pdo, $adminId)
+{
+    $page = cms_get_page_by_key($pdo, 'index');
+    if (!$page) {
+        throw new RuntimeException('Početna stranica nije pronađena u CMS-u.');
+    }
+
+    $record = cms_get_page_content_by_page_id($pdo, $page['id']);
+    if (!$record) {
+        throw new RuntimeException('Sadržaj početne stranice još nije uvezen u CMS.');
+    }
+
+    $migrationStatus = cms_get_legacy_homepage_migration_status($pdo);
+    if ($migrationStatus['uses_database_feed'] && !$migrationStatus['has_legacy_section']) {
+        return ['imported' => 0, 'skipped' => 0, 'already_migrated' => true];
+    }
+
+    $legacyItems = [];
+    $pageUpdates = [];
+    $contentHtml = (string) $record['content_html'];
+
+    if (preg_match(cms_legacy_homepage_section_pattern(), $contentHtml) === 1) {
+        $legacy = cms_extract_legacy_homepage_items($contentHtml);
+        if ($legacy === null) {
+            throw new RuntimeException('Stari blok sa obaveštenjima i aktuelnostima nije moguće bezbedno pročitati.');
+        }
+
+        $updatedHomepageHtml = preg_replace(
+            cms_legacy_homepage_section_pattern(),
+            '{{homepage-feed}}',
+            $contentHtml,
+            1,
+            $homepageReplacementCount
+        );
+        if ($homepageReplacementCount !== 1) {
+            throw new RuntimeException('Stari blok na početnoj stranici nije moguće bezbedno zameniti.');
+        }
+
+        $legacyItems = array_merge($legacyItems, $legacy['items']);
+        $pageUpdates[] = ['id' => (int) $record['id'], 'content_html' => $updatedHomepageHtml];
+    } elseif (strpos($contentHtml, '{{homepage-feed}}') === false) {
+        throw new RuntimeException('Prikaz obaveštenja na početnoj stranici nije pronađen.');
+    }
+
+    $archiveDefinitions = [
+        'sva_obavestenja' => [
+            'placeholder' => '{{homepage-important-archive}}',
+            'extractor' => 'cms_extract_legacy_notice_archive_items',
+        ],
+        'aktuelno' => [
+            'placeholder' => '{{homepage-events-archive}}',
+            'extractor' => 'cms_extract_legacy_event_archive_items',
+        ],
+    ];
+
+    foreach ($archiveDefinitions as $archivePageKey => $definition) {
+        $archivePage = cms_get_page_by_key($pdo, $archivePageKey);
+        $archiveRecord = $archivePage ? cms_get_page_content_by_page_id($pdo, $archivePage['id']) : null;
+        if (!$archiveRecord) {
+            continue;
+        }
+
+        $archiveHtml = (string) $archiveRecord['content_html'];
+        if (strpos($archiveHtml, $definition['placeholder']) !== false) {
+            continue;
+        }
+        if (preg_match(cms_legacy_archive_section_pattern(), $archiveHtml) !== 1) {
+            throw new RuntimeException('Stari sadržaj stranice „' . $archivePage['title'] . '“ nije moguće bezbedno pronaći.');
+        }
+
+        $archiveItems = call_user_func($definition['extractor'], $archiveHtml);
+        if (!$archiveItems) {
+            throw new RuntimeException('Stavke sa stranice „' . $archivePage['title'] . '“ nije moguće bezbedno pročitati.');
+        }
+
+        $updatedArchiveHtml = preg_replace(
+            cms_legacy_archive_section_pattern(),
+            $definition['placeholder'],
+            $archiveHtml,
+            1,
+            $archiveReplacementCount
+        );
+        if ($archiveReplacementCount !== 1) {
+            throw new RuntimeException('Stari sadržaj stranice „' . $archivePage['title'] . '“ nije moguće bezbedno zameniti.');
+        }
+
+        $legacyItems = array_merge($legacyItems, $archiveItems);
+        $pageUpdates[] = ['id' => (int) $archiveRecord['id'], 'content_html' => $updatedArchiveHtml];
+    }
+
+    if (!$legacyItems && !$pageUpdates) {
+        return ['imported' => 0, 'skipped' => 0, 'already_migrated' => true];
+    }
+
+    $existingStatement = $pdo->prepare('
+        SELECT area_key, title, COALESCE(file_path, link_url, \'\') AS item_url
+        FROM cms_content_items
+        WHERE page_id = :page_id
+          AND area_key IN (\'homepage-important\', \'homepage-events\')
+    ');
+    $existingStatement->execute(['page_id' => (int) $page['id']]);
+    $existing = [];
+    $normalize = static function ($value) {
+        $value = trim((string) $value);
+        return function_exists('mb_strtolower') ? mb_strtolower($value, 'UTF-8') : strtolower($value);
+    };
+
+    foreach ($existingStatement->fetchAll() as $item) {
+        $signature = sha1($item['area_key'] . '|' . $normalize($item['title']) . '|' . $normalize($item['item_url']));
+        $existing[$signature] = true;
+    }
+
+    $insert = $pdo->prepare('
+        INSERT INTO cms_content_items (
+            page_id, area_key, content_type, title, summary, body_html,
+            link_url, link_target, published_at, sort_order, is_published, created_by
+        ) VALUES (
+            :page_id, :area_key, :content_type, :title, :summary, :body_html,
+            :link_url, :link_target, :published_at, 0, 1, :created_by
+        )
+    ');
+    $updatePage = $pdo->prepare('
+        UPDATE cms_page_content
+        SET content_html = :content_html,
+            updated_by = :updated_by,
+            updated_at = NOW()
+        WHERE id = :id
+    ');
+
+    $imported = 0;
+    $skipped = 0;
+    $pdo->beginTransaction();
+
+    try {
+        foreach ($legacyItems as $item) {
+            $signature = sha1($item['area_key'] . '|' . $normalize($item['title']) . '|' . $normalize($item['link_url']));
+            if (isset($existing[$signature])) {
+                $skipped++;
+                continue;
+            }
+
+            $insert->execute([
+                'page_id' => (int) $page['id'],
+                'area_key' => $item['area_key'],
+                'content_type' => $item['content_type'],
+                'title' => $item['title'],
+                'summary' => $item['summary'],
+                'body_html' => $item['body_html'],
+                'link_url' => $item['link_url'],
+                'link_target' => $item['link_target'],
+                'published_at' => $item['published_at'],
+                'created_by' => (int) $adminId,
+            ]);
+            $existing[$signature] = true;
+            $imported++;
+        }
+
+        foreach ($pageUpdates as $pageUpdate) {
+            $updatePage->execute([
+                'content_html' => $pageUpdate['content_html'],
+                'updated_by' => (int) $adminId,
+                'id' => (int) $pageUpdate['id'],
+            ]);
+        }
+        $pdo->commit();
+    } catch (Throwable $exception) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $exception;
+    }
+
+    return [
+        'imported' => $imported,
+        'skipped' => $skipped,
+        'already_migrated' => false,
+        'processed' => count($legacyItems),
+    ];
+}
+
 function cms_content_type_options()
 {
     return [
@@ -1151,13 +1791,20 @@ function cms_resolve_content_item_url(array $item)
     return null;
 }
 
-function cms_get_homepage_items($areaKey, $limit = 6)
+function cms_get_homepage_items($areaKey, $limit = null)
 {
     $pdo = site_db();
 
     if (!$pdo instanceof PDO || !site_has_tables(['cms_pages', 'cms_content_items'])) {
         return [];
     }
+
+    if ($limit === null) {
+        $configuredLimits = cms_get_homepage_display_limits($pdo);
+        $limit = $configuredLimits[$areaKey] ?? 6;
+    }
+
+    $limit = max(1, min(20, (int) $limit));
 
     $statement = $pdo->prepare('
         SELECT cms_content_items.*, cms_pages.page_key
@@ -1167,7 +1814,7 @@ function cms_get_homepage_items($areaKey, $limit = 6)
           AND cms_content_items.area_key = :area_key
           AND cms_content_items.is_published = 1
           AND cms_content_items.published_at <= NOW()
-        ORDER BY cms_content_items.sort_order ASC, cms_content_items.published_at DESC, cms_content_items.id DESC
+        ORDER BY cms_content_items.published_at DESC, cms_content_items.id DESC, cms_content_items.sort_order ASC
         LIMIT ' . (int) $limit
     );
     $statement->execute([
@@ -1674,7 +2321,7 @@ function cms_delete_page(PDO $pdo, $pageId)
     ];
 }
 
-function cms_list_public_content_items(PDO $pdo, $pageId, $areaKey = null)
+function cms_list_public_content_items(PDO $pdo, $pageId, $areaKey = null, $limit = null, $latestFirst = false)
 {
     $sql = '
         SELECT cms_content_items.*, cms_pages.page_key, cms_pages.route_path
@@ -1691,7 +2338,17 @@ function cms_list_public_content_items(PDO $pdo, $pageId, $areaKey = null)
         $parameters['area_key'] = trim((string) $areaKey);
     }
 
-    $sql .= ' ORDER BY cms_content_items.sort_order ASC, cms_content_items.published_at DESC, cms_content_items.id DESC';
+    if ($latestFirst) {
+        $sql .= ' ORDER BY cms_content_items.published_at DESC, cms_content_items.id DESC, cms_content_items.sort_order ASC';
+    } else {
+        $sql .= ' ORDER BY cms_content_items.sort_order ASC, cms_content_items.published_at DESC, cms_content_items.id DESC';
+    }
+
+    if ($limit !== null) {
+        $limit = max(1, min(100, (int) $limit));
+        $sql .= ' LIMIT ' . $limit;
+    }
+
     $statement = $pdo->prepare($sql);
     $statement->execute($parameters);
 

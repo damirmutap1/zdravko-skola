@@ -1389,6 +1389,8 @@ section.cover-istorijat .wrap {
 /* line 505, ../sass/screen.scss */
 section.cover-istorijat img {
   width: 100%;
+  height: auto;
+  display: block;
 }
 /* line 507, ../sass/screen.scss */
 section.cover-istorijat h1 {

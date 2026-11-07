@@ -8,7 +8,7 @@ $pdo = site_db_or_fail();
 $hasPageContentTable = site_table_exists($pdo, 'cms_page_content');
 $pageQuery = trim((string) ($_GET['q'] ?? ''));
 $pageStatusFilter = trim((string) ($_GET['status'] ?? 'all'));
-$allowedPageStatusFilters = ['all', 'published', 'attention', 'custom'];
+$allowedPageStatusFilters = ['all', 'published', 'attention', 'legacy', 'custom'];
 if (!in_array($pageStatusFilter, $allowedPageStatusFilters, true)) {
     $pageStatusFilter = 'all';
 }
@@ -70,6 +70,9 @@ try {
     }
 
     cms_sync_pages($pdo);
+    if ($hasPageContentTable) {
+        cms_sync_page_content_from_sources($pdo, false);
+    }
 } catch (Throwable $exception) {
     $pageForm = array_merge($pageForm, $_POST);
     admin_flash('error', $exception->getMessage());
@@ -137,6 +140,10 @@ if ($pageStatusFilter !== 'all') {
             return !$isSystemPage && !$isPublished;
         }
 
+        if ($pageStatusFilter === 'legacy') {
+            return $isSystemPage;
+        }
+
         return !$isSystemPage;
     }));
 }
@@ -166,7 +173,10 @@ require __DIR__ . '/layout-start.php';
             <h2>Izaberite stranicu</h2>
             <p class="muted">Najčešće radnje su odmah ispod svake stranice.</p>
         </div>
-        <a class="button" href="#page-form">Dodaj novu stranicu</a>
+        <div class="actions">
+            <a class="button button-secondary" href="pages.php?status=legacy">Stare PHP stranice</a>
+            <a class="button" href="#page-form">Dodaj novu stranicu</a>
+        </div>
     </div>
 
     <form method="get" class="page-search-form" role="search">
@@ -181,6 +191,7 @@ require __DIR__ . '/layout-start.php';
                     <option value="all" <?php echo $pageStatusFilter === 'all' ? 'selected' : ''; ?>>Sve stranice</option>
                     <option value="published" <?php echo $pageStatusFilter === 'published' ? 'selected' : ''; ?>>Objavljene</option>
                     <option value="attention" <?php echo $pageStatusFilter === 'attention' ? 'selected' : ''; ?>>Za dovršavanje</option>
+                    <option value="legacy" <?php echo $pageStatusFilter === 'legacy' ? 'selected' : ''; ?>>Stare PHP stranice</option>
                     <option value="custom" <?php echo $pageStatusFilter === 'custom' ? 'selected' : ''; ?>>Napravljene u administraciji</option>
                 </select>
             </label>
@@ -245,7 +256,7 @@ require __DIR__ . '/layout-start.php';
 
                     <?php if ($hasPageContentTable): ?>
                         <div class="page-card-primary-actions">
-                            <a class="button" href="page-content-edit.php?page_id=<?php echo (int) $page['id']; ?>">Uredi tekst</a>
+                            <a class="button" href="page-content-edit.php?page_id=<?php echo (int) $page['id']; ?>"><?php echo $isSystemPage ? 'Uredi staru stranicu' : 'Uredi tekst'; ?></a>
                             <a class="button button-secondary" href="content.php?page_id=<?php echo (int) $page['id']; ?>">Uredi slike i fajlove</a>
                             <a class="button button-secondary" href="content-edit.php?page_id=<?php echo (int) $page['id']; ?>&area_key=page-gallery&content_type=image">Dodaj fotografiju</a>
                             <a class="button button-secondary" href="content-edit.php?page_id=<?php echo (int) $page['id']; ?>&area_key=page-downloads&content_type=file">Dodaj fajl</a>
@@ -260,7 +271,7 @@ require __DIR__ . '/layout-start.php';
                         <div class="page-card-more-content">
                             <dl class="page-card-metadata">
                                 <div><dt>Dodatni sadržaj</dt><dd><?php echo (int) $page['content_count']; ?> stavki</dd></div>
-                                <div><dt>Vrsta stranice</dt><dd><?php echo $isSystemPage ? 'Sistemska PHP stranica' : 'Stranica napravljena u administraciji'; ?></dd></div>
+                                <div><dt>Vrsta stranice</dt><dd><?php echo $isSystemPage ? 'Stara PHP stranica – sadržaj se uređuje kroz CMS' : 'Stranica napravljena u administraciji'; ?></dd></div>
                                 <div><dt>Ključ</dt><dd><code><?php echo site_escape($page['page_key']); ?></code></dd></div>
                                 <?php if ($isSystemPage): ?>
                                     <div><dt>Fajl</dt><dd><code><?php echo site_escape($page['file_path']); ?></code></dd></div>
@@ -330,7 +341,7 @@ require __DIR__ . '/layout-start.php';
         <?php if ($editingPage): ?>
             Meni ostaje povezan sa ovom stranicom i automatski će koristiti novu URL adresu.
         <?php else: ?>
-            Unesite naziv. URL možete ostaviti prazan — napraviće se automatski. Posle kreiranja unesite tekst i po želji povežite stranicu u „Meniju sajta“.
+            Unesite naziv. URL možete ostaviti prazan — napraviće se automatski. Nova stranica automatski dobija široki baner škole; zatim unesite tekst i po želji je povežite u „Meniju sajta“.
         <?php endif; ?>
     </p>
     <form method="post" class="form-grid two" data-guard-unsaved>

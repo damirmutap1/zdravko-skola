@@ -547,7 +547,10 @@ function cms_save_page_content(PDO $pdo, array $data, $adminId, $recordId = null
         throw new InvalidArgumentException('Naslov pregledača je obavezan.');
     }
 
-    if ($contentHtml === '') {
+    $page = cms_get_page_by_id($pdo, $pageId);
+    $isDatabasePage = $page && ($page['file_path'] ?? '') === '[db-page]';
+
+    if ($contentHtml === '' && !$isDatabasePage) {
         throw new InvalidArgumentException('HTML sadržaj stranice je obavezan.');
     }
 
@@ -1297,10 +1300,218 @@ function cms_render_public_area_html($areaKey, array $items, array $options = []
         return trim((string) ob_get_clean());
     }
 
-function cms_replace_page_area_placeholders(PDO $pdo, array $record, $contentHtml)
+function cms_homepage_month_label($publishedAt)
+{
+    $timestamp = strtotime((string) $publishedAt);
+    if ($timestamp === false) {
+        return '';
+    }
+
+    $months = [
+        1 => 'јануар', 2 => 'фебруар', 3 => 'март', 4 => 'април',
+        5 => 'мај', 6 => 'јун', 7 => 'јул', 8 => 'август',
+        9 => 'септембар', 10 => 'октобар', 11 => 'новембар', 12 => 'децембар',
+    ];
+
+    return $months[(int) date('n', $timestamp)] ?? '';
+}
+
+function cms_render_homepage_feed_html(array $importantItems, array $eventItems)
+{
+    if (!$importantItems && !$eventItems) {
+        return '';
+    }
+
+    ob_start();
+    ?>
+<section class="obavestenja cms-homepage-feed" data-cms-homepage-feed>
+    <div class="wrap">
+        <div class="left" data-area-key="homepage-important">
+            <h1><span><a href="sva_obavestenja.php">Важна обавештења</a></span></h1>
+            <?php foreach ($importantItems as $item): ?>
+                <?php $itemUrl = cms_resolve_content_item_url($item); ?>
+                <div class="block">
+                    <div class="file-box">
+                        <img src="images/document.png" alt="" width="50">
+                    </div>
+                    <div class="text-box">
+                        <div class="button">
+                            <?php if ($itemUrl): ?>
+                                <a class="button" href="<?php echo site_escape($itemUrl); ?>" target="<?php echo site_escape(!empty($item['link_target']) ? $item['link_target'] : '_self'); ?>">
+                                    <?php echo site_escape($item['title']); ?>
+                                    <span class="buton"></span><span class="buton"></span><span class="buton"></span><span class="buton"></span>
+                                </a>
+                            <?php else: ?>
+                                <strong><?php echo site_escape($item['title']); ?></strong>
+                            <?php endif; ?>
+                        </div>
+                        <?php if (!empty($item['summary'])): ?>
+                            <p><?php echo nl2br(site_escape((string) $item['summary'])); ?></p>
+                        <?php endif; ?>
+                        <?php if (!empty($item['body_html'])): ?>
+                            <div class="cms-homepage-item-body"><?php echo $item['body_html']; ?></div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            <?php endforeach; ?>
+        </div>
+
+        <div class="right" data-area-key="homepage-events">
+            <h1><span><a href="aktuelno.php">Актуелно</a></span></h1>
+            <?php foreach ($eventItems as $item): ?>
+                <?php
+                $itemUrl = cms_resolve_content_item_url($item);
+                $publishedTimestamp = strtotime((string) ($item['published_at'] ?? ''));
+                $isMediaOnly = !$itemUrl && ($item['content_type'] ?? '') === 'html' && !empty($item['body_html']);
+                ?>
+                <div class="block_1">
+                    <?php if ($isMediaOnly): ?>
+                        <div class="cms-homepage-item-body"><?php echo $item['body_html']; ?></div>
+                    <?php else: ?>
+                    <?php if ($publishedTimestamp !== false): ?>
+                        <time datetime="<?php echo site_escape(date('Y-m-d', $publishedTimestamp)); ?>">
+                            <span><?php echo site_escape(cms_homepage_month_label($item['published_at'])); ?></span>
+                            <em><?php echo site_escape(date('j', $publishedTimestamp)); ?></em>
+                        </time>
+                    <?php endif; ?>
+                    <div class="extra-wrap">
+                        <div class="button">
+                            <?php if ($itemUrl): ?>
+                                <a class="button" href="<?php echo site_escape($itemUrl); ?>" target="<?php echo site_escape(!empty($item['link_target']) ? $item['link_target'] : '_self'); ?>">
+                                    <?php echo site_escape($item['title']); ?>
+                                    <span class="buton"></span><span class="buton"></span><span class="buton"></span><span class="buton"></span>
+                                </a>
+                            <?php else: ?>
+                                <strong><?php echo site_escape($item['title']); ?></strong>
+                            <?php endif; ?>
+                        </div>
+                        <?php if (!empty($item['summary'])): ?>
+                            <p><?php echo nl2br(site_escape((string) $item['summary'])); ?></p>
+                        <?php endif; ?>
+                        <?php if (!empty($item['body_html'])): ?>
+                            <div class="cms-homepage-item-body"><?php echo $item['body_html']; ?></div>
+                        <?php endif; ?>
+                        <div class="clearfix"></div>
+                    </div>
+                    <?php endif; ?>
+                </div>
+                <div class="clearfix"></div>
+            <?php endforeach; ?>
+        </div>
+    </div>
+    <div class="clearfix"></div>
+</section>
+<?php
+    return trim((string) ob_get_clean());
+}
+
+function cms_render_homepage_archive_html($areaKey, array $items)
+{
+    $isImportant = $areaKey === 'homepage-important';
+    $heading = $isImportant ? 'Сва обавештења' : 'Актуелне вести';
+    ob_start();
+    ?>
+<section class="single-page cms-homepage-archive" data-area-key="<?php echo site_escape($areaKey); ?>">
+    <div class="wrap">
+        <h1><span><?php echo site_escape($heading); ?></span></h1>
+        <div class="single-box">
+            <?php if (!$items): ?>
+                <p>Тренутно нема објављених ставки.</p>
+            <?php endif; ?>
+
+            <?php foreach ($items as $item): ?>
+                <?php
+                $itemUrl = cms_resolve_content_item_url($item);
+                $publishedLabel = !empty($item['published_at']) ? site_format_date($item['published_at'], 'd.m.Y.') : '';
+                ?>
+                <?php if ($isImportant): ?>
+                    <div class="block">
+                        <div class="file-box"><img src="images/document.png" alt="" width="50"></div>
+                        <div class="text-box" style="display: inline-block;">
+                            <div class="button">
+                                <?php if ($itemUrl): ?>
+                                    <a class="button" href="<?php echo site_escape($itemUrl); ?>" target="<?php echo site_escape(!empty($item['link_target']) ? $item['link_target'] : '_self'); ?>">
+                                        <?php echo site_escape($item['title']); ?>
+                                        <span class="buton"></span><span class="buton"></span><span class="buton"></span><span class="buton"></span>
+                                    </a>
+                                <?php else: ?>
+                                    <strong><?php echo site_escape($item['title']); ?></strong>
+                                <?php endif; ?>
+                            </div>
+                            <?php if (!empty($item['summary'])): ?><p><?php echo nl2br(site_escape((string) $item['summary'])); ?></p><?php endif; ?>
+                            <?php if (!empty($item['body_html'])): ?><div><?php echo $item['body_html']; ?></div><?php endif; ?>
+                        </div>
+                    </div>
+                <?php else: ?>
+                    <article style="margin-bottom: 20px;">
+                        <?php if ($itemUrl): ?><a href="<?php echo site_escape($itemUrl); ?>" class="aktuelno" target="<?php echo site_escape(!empty($item['link_target']) ? $item['link_target'] : '_self'); ?>"><?php endif; ?>
+                            <h2><?php echo site_escape($item['title']); ?></h2>
+                            <?php if ($publishedLabel !== ''): ?><span class="datum"><?php echo site_escape($publishedLabel); ?></span><?php endif; ?>
+                            <?php if (!empty($item['summary'])): ?><p><?php echo nl2br(site_escape((string) $item['summary'])); ?></p><?php endif; ?>
+                        <?php if ($itemUrl): ?></a><?php endif; ?>
+                        <?php if (!empty($item['body_html'])): ?><div><?php echo $item['body_html']; ?></div><?php endif; ?>
+                    </article>
+                <?php endif; ?>
+                <hr>
+            <?php endforeach; ?>
+        </div>
+        <div class="clearfix"></div>
+    </div>
+</section>
+<?php
+    return trim((string) ob_get_clean());
+}
+
+function cms_replace_page_area_placeholders(PDO $pdo, array $record, $contentHtml, array $areaLimits = [])
 {
     $contentHtml = (string) $contentHtml;
     $usedAreaKeys = [];
+
+    $archivePlaceholders = [
+        '{{homepage-important-archive}}' => 'homepage-important',
+        '{{homepage-events-archive}}' => 'homepage-events',
+    ];
+    foreach ($archivePlaceholders as $archivePlaceholder => $archiveAreaKey) {
+        if (strpos($contentHtml, $archivePlaceholder) === false) {
+            continue;
+        }
+
+        $homePage = cms_get_page_by_key($pdo, 'index');
+        $archiveItems = $homePage
+            ? cms_list_public_content_items($pdo, $homePage['id'], $archiveAreaKey, null, true)
+            : [];
+        $contentHtml = str_replace(
+            $archivePlaceholder,
+            cms_render_homepage_archive_html($archiveAreaKey, $archiveItems),
+            $contentHtml
+        );
+    }
+
+    if (strpos($contentHtml, '{{homepage-feed}}') !== false) {
+        $importantLimit = $areaLimits['homepage-important'] ?? null;
+        $eventsLimit = $areaLimits['homepage-events'] ?? null;
+        $importantItems = cms_list_public_content_items(
+            $pdo,
+            $record['page_id'],
+            'homepage-important',
+            $importantLimit,
+            $importantLimit !== null
+        );
+        $eventItems = cms_list_public_content_items(
+            $pdo,
+            $record['page_id'],
+            'homepage-events',
+            $eventsLimit,
+            $eventsLimit !== null
+        );
+        $contentHtml = str_replace(
+            '{{homepage-feed}}',
+            cms_render_homepage_feed_html($importantItems, $eventItems),
+            $contentHtml
+        );
+        $usedAreaKeys[] = 'homepage-important';
+        $usedAreaKeys[] = 'homepage-events';
+    }
 
     foreach (array_keys(cms_page_area_titles()) as $areaKey) {
         $placeholder = '{{' . $areaKey . '}}';
@@ -1310,7 +1521,8 @@ function cms_replace_page_area_placeholders(PDO $pdo, array $record, $contentHtm
         }
 
         $usedAreaKeys[] = $areaKey;
-        $items = cms_list_public_content_items($pdo, $record['page_id'], $areaKey);
+        $limit = $areaLimits[$areaKey] ?? null;
+        $items = cms_list_public_content_items($pdo, $record['page_id'], $areaKey, $limit, $limit !== null);
         $contentHtml = str_replace($placeholder, cms_render_public_area_html($areaKey, $items, ['embedded' => true]), $contentHtml);
     }
 
@@ -1320,7 +1532,7 @@ function cms_replace_page_area_placeholders(PDO $pdo, array $record, $contentHtm
     ];
 }
 
-function cms_render_unused_page_areas(PDO $pdo, array $record, array $usedAreaKeys = [])
+function cms_render_unused_page_areas(PDO $pdo, array $record, array $usedAreaKeys = [], array $areaLimits = [])
 {
     $html = [];
 
@@ -1329,7 +1541,8 @@ function cms_render_unused_page_areas(PDO $pdo, array $record, array $usedAreaKe
             continue;
         }
 
-        $items = cms_list_public_content_items($pdo, $record['page_id'], $areaKey);
+        $limit = $areaLimits[$areaKey] ?? null;
+        $items = cms_list_public_content_items($pdo, $record['page_id'], $areaKey, $limit, $limit !== null);
         if (!$items) {
             continue;
         }
@@ -1367,6 +1580,91 @@ function cms_get_page_content_by_route(PDO $pdo, $routePath, $publishedOnly = fa
     return $record ?: null;
 }
 
+function cms_default_inner_page_banner_html()
+{
+    return sprintf(
+        '<section class="cover-istorijat cms-default-page-banner" aria-label="Школска зграда">'
+        . '<div class="wrap"><img src="%s" alt="Зид школске зграде са муралом" width="1270" height="300"></div>'
+        . '</section>',
+        site_escape(site_url('images/istorijat.jpg'))
+    );
+}
+
+function cms_is_database_created_page(array $record)
+{
+    return ($record['file_path'] ?? '') === '[db-page]';
+}
+
+function cms_strip_generated_db_page_placeholder($contentHtml, $pageTitle = '')
+{
+    $contentHtml = (string) $contentHtml;
+    $placeholderPattern = '~<p\b[^>]*>\s*Unesite\s+[^<\s]+\s+ove\s+stranice[.]?\s*</p>~iu';
+
+    if (preg_match($placeholderPattern, $contentHtml) !== 1) {
+        return $contentHtml;
+    }
+
+    $contentHtml = preg_replace($placeholderPattern, '', $contentHtml, 1);
+    $pageTitle = trim((string) $pageTitle);
+
+    if ($pageTitle !== '') {
+        $headingPattern = '~<h[1-6]\b[^>]*>\s*' . preg_quote($pageTitle, '~') . '\s*</h[1-6]>~iu';
+        $contentHtml = preg_replace($headingPattern, '', $contentHtml, 1);
+    }
+
+    if (trim(strip_tags((string) $contentHtml)) === '') {
+        return '';
+    }
+
+    return trim((string) $contentHtml);
+}
+
+function cms_page_content_is_effectively_empty($contentHtml, $pageTitle = '')
+{
+    $contentHtml = cms_strip_generated_db_page_placeholder($contentHtml, $pageTitle);
+    $text = html_entity_decode(strip_tags((string) $contentHtml), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    $text = trim((string) preg_replace('/\s+/u', ' ', $text));
+
+    if ($text === '') {
+        return true;
+    }
+
+    $pageTitle = trim((string) $pageTitle);
+
+    return $pageTitle !== '' && strcasecmp($text, $pageTitle) === 0;
+}
+
+function cms_render_database_page_main_html($heading, $bodyHtml)
+{
+    $heading = trim((string) $heading);
+    $bodyHtml = trim((string) $bodyHtml);
+    ob_start();
+    ?>
+<section class="single-page cms-database-page" id="content">
+    <div class="wrap">
+        <h1><span><?php echo site_escape($heading); ?></span></h1>
+        <?php if ($bodyHtml !== ''): ?>
+            <div class="single-box cms-database-page-body"><?php echo $bodyHtml; ?></div>
+        <?php endif; ?>
+        <div class="clearfix"></div>
+    </div>
+</section>
+<?php
+    return trim((string) ob_get_clean());
+}
+
+function cms_page_content_needs_default_banner(array $record, $contentHtml)
+{
+    if (!cms_is_database_created_page($record)) {
+        return false;
+    }
+
+    $contentHtml = (string) $contentHtml;
+
+    return stripos($contentHtml, 'cover-istorijat') === false
+        && stripos($contentHtml, 'images/istorijat.jpg') === false;
+}
+
 function cms_render_page_content_record(array $record)
 {
     $title = trim((string) ($record['browser_title'] ?? $record['page_title'] ?? 'OŠ Zdravko Jovanović'));
@@ -1375,15 +1673,33 @@ function cms_render_page_content_record(array $record)
     $extraHeadHtml = trim((string) ($record['extra_head_html'] ?? ''));
     $extraFooterHtml = trim((string) ($record['extra_footer_html'] ?? ''));
     $trailingAreaHtml = '';
+    $isDatabasePage = cms_is_database_created_page($record);
+
+    if ($isDatabasePage) {
+        $contentHtml = cms_strip_generated_db_page_placeholder($contentHtml, $record['page_title'] ?? $title);
+    }
+
+    $pageBannerHtml = cms_page_content_needs_default_banner($record, $contentHtml)
+        ? cms_default_inner_page_banner_html()
+        : '';
     $pdo = site_db();
 
     if ($pdo instanceof PDO && !empty($record['page_id']) && site_table_exists($pdo, 'cms_content_items')) {
-        $replacement = cms_replace_page_area_placeholders($pdo, $record, $contentHtml);
+        $areaLimits = [];
+        if (($record['page_key'] ?? '') === 'index') {
+            $areaLimits = cms_get_homepage_display_limits($pdo);
+        }
+
+        $replacement = cms_replace_page_area_placeholders($pdo, $record, $contentHtml, $areaLimits);
         $contentHtml = $replacement['content_html'];
-        $trailingAreaHtml = cms_render_unused_page_areas($pdo, $record, $replacement['used_area_keys']);
+        $trailingAreaHtml = cms_render_unused_page_areas($pdo, $record, $replacement['used_area_keys'], $areaLimits);
     }
 
     $contentHtml = cms_replace_special_placeholders($contentHtml, $record);
+
+    if ($isDatabasePage) {
+        $contentHtml = cms_render_database_page_main_html($title, $contentHtml);
+    }
 
     $hasDownloadArea = strpos($contentHtml . "\n" . $trailingAreaHtml, 'data-area-key="page-downloads"') !== false;
     $hasGalleryArea = strpos($contentHtml . "\n" . $trailingAreaHtml, 'data-area-key="page-gallery"') !== false;
@@ -1723,6 +2039,7 @@ function cms_render_page_content_record(array $record)
 </head>
 <body>
 <?php echo cms_capture_repaired_include('includes/header.php'); ?>
+<?php echo $pageBannerHtml; ?>
 <?php echo $contentHtml; ?>
 <?php echo $trailingAreaHtml; ?>
 <a class="fa fa-arrow-circle-up" id="toTop" href="#" style="display: inline;"></a>

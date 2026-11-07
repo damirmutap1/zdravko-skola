@@ -12,6 +12,7 @@ $navItems = [
     'dashboard' => ['label' => 'Početna', 'href' => 'dashboard.php', 'group' => 'Sadržaj'],
     'pages' => ['label' => 'Stranice', 'href' => 'pages.php', 'group' => 'Sadržaj'],
     'content' => ['label' => 'Objave, slike i fajlovi', 'href' => 'content.php', 'group' => 'Sadržaj'],
+    'homepage-settings' => ['label' => 'Prikaz početne', 'href' => 'homepage-settings.php', 'group' => 'Podešavanja'],
     'navigation' => ['label' => 'Meni sajta', 'href' => 'navigation.php', 'group' => 'Podešavanja'],
     'users' => ['label' => 'Admin korisnici', 'href' => 'users.php', 'group' => 'Podešavanja'],
 ];
